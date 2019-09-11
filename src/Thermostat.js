@@ -66,7 +66,7 @@ module.exports = {
                                 return;
                             }
                             this.service.setCharacteristic(Characteristic.CurrentTemperature, temperature);
-                            this.service.setCharacteristic((Characteristic.CurrentRelativeHumidity, humidity);
+                            this.service.setCharacteristic(Characteristic.CurrentRelativeHumidity, humidity);
                         })
                     }, this.pollingInterval)
                 }
