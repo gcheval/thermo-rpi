@@ -3,6 +3,8 @@ let Service, Characteristic;
 module.exports = {
     createThermostat: function({Service, Characteristic}) {
         const sensorLib = require('node-dht-sensor');
+        const gpio = require('rpi-gpio');
+        const debug = require('debug');
         const ON = false, OFF = true;
         const OSCILLATION_DEGREES = 2;
         const
@@ -17,11 +19,10 @@ module.exports = {
             STATE_STOPPING_COMPRESSOR = 8,
             STATE_COMPRESSOR_COOLDOWN = 9
         ;
-        const MIN_COMPRESSOR_RAMPUP_MINUTES = 0;
-        const MIN_COMPRESSOR_COOLDOWN_MINUTES = 0;
+        const MIN_COMPRESSOR_RAMPUP_MINUTES = 3;
+        const MIN_COMPRESSOR_COOLDOWN_MINUTES = 1;
         const ONE_SECOND_IN_MS = 1000;
         const SECONDS_IN_A_MINUTE = 60;
-        let gpio = require('rpi-gpio');
 
         return class Thermostat {
             constructor(log, config) {
@@ -112,8 +113,7 @@ module.exports = {
                         return callback(err || new Error('cannot get sensor data'), null);
                     }
 
-                    this.log("[+] State is %d", this.targetCoolingState);
-
+                    debug("[+] Current machine state is %d", this.state);
                     //State machine
                     this.log("[+] Current state is %d", this.state);
                     switch(this.state) {
