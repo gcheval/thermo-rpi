@@ -63,11 +63,10 @@ module.exports = {
                             const {humidity, temperature} = values || {}
                             if (err) {
                                 this.log(err)
-                                return
+                                return;
                             }
-
-                            this.humidityService.setCharacteristic(Characteristic.CurrentRelativeHumidity, humidity)
-                            this.temperatureService.setCharacteristic(Characteristic.CurrentTemperature, temperature)
+                            this.service.setCharacteristic(Characteristic.CurrentTemperature, temperature);
+                            this.service.setCharacteristic((Characteristic.CurrentRelativeHumidity, humidity);
                         })
                     }, this.pollingInterval)
                 }
