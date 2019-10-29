@@ -27,12 +27,14 @@ module.exports = {
         return class Thermostat {
             constructor(log, config) {
                 this.state = 0;
+                this.forceStart = false;
                 this.manufacturer = 'guicheva-rpi';
                 this.model = 'thermostat-rpi';
                 this.serial = '00001';
                 this.log = log;
                 this.name = config.name;
                 this.type = config.tempSensorType;
+                this.tempUnit = (config.tempUnit === "CELSIUS") ? 0 : 1;
                 this.pin = config.tempGpioPin;
                 this.compressorPin = config.compressorGpioPin;
                 this.fanPin = config.fanGpioPin;
@@ -49,9 +51,6 @@ module.exports = {
                 this.fanLastStarted = null;
                 this.compressorLastStarted = null;
                 this.compressorLastStopped = null;
-
-                this.humidityService = new Service.HumiditySensor(this.name);
-                this.temperatureService = new Service.TemperatureSensor(this.name);
 
                 this.log("setup GPIO");
                 gpio.setup(this.fanPin, gpio.DIR_HIGH);
@@ -86,6 +85,7 @@ module.exports = {
             setTargetTemperature(value, callback) {
                 this.log("[+] setTargetTemperature from %s to %s", this.targetTemperature, value);
                 this.targetTemperature = value;
+                this.forceStart = true;
                 callback();
             }
 
@@ -122,6 +122,7 @@ module.exports = {
                             this.fanLastStarted = null;
                             this.compressorLastStarted = null;
                             this.state = STATE_STANDBY;
+                            this.forceStart = true;
                             break;
                         case STATE_STANDBY: // Stand-by
                             if (this.targetCoolingState === Characteristic.TargetHeatingCoolingState.COOL) {
@@ -147,10 +148,16 @@ module.exports = {
                                 this.state = STATE_OFF;
                             } else if ((this.currentTemperature > this.targetTemperature + OSCILLATION_DEGREES) && (!this.compressorLastStopped || (Date.now() - ONE_SECOND_IN_MS * SECONDS_IN_A_MINUTE * MIN_COMPRESSOR_RAMPUP_MINUTES) > this.compressorLastStopped)) {
                                 this.state = STATE_START_COMPRESSOR;
+                            } else if ((this.currentTemperature > this.targetTemperature) && this.forceStart) {
+                                this.state = STATE_START_COMPRESSOR;
+                            } else {
+                                // temp set was not under current temp.
+                                this.forceStart = false;
                             }
                             break;
                         case STATE_START_COMPRESSOR:
                             gpio.write(this.compressorPin, ON);
+                            this.forceStart = false;
                             this.compressorLastStarted = Date.now();
                             this.state = STATE_COMPRESSOR_RAMPUP;
                             break;
@@ -196,6 +203,35 @@ module.exports = {
                 })
             }
 
+            getTemperatureDisplayUnits(callback) {
+                callback(null, this.tempUnit);
+            }
+
+            setTemperatureDisplayUnits(value, callback) {
+                this.tempUnit = value;
+                this.log("setTemperatureDisplayUnits : %d", value);
+                this.service.updateCharacteristic(Characteristic.TemperatureDisplayUnits, this.tempUnit);
+                this.service.updateCharacteristic(Characteristic.TargetTemperature, this.targetTemperature);
+
+                callback(null);
+            }
+
+            formatDegrees(temp) {
+                if (this.tempUnit === Characteristic.TemperatureDisplayUnits.CELSIUS) {
+                    return temp;
+                } else {
+                    return this.celsiusToFahrenheit(temp);
+                }
+            }
+
+            celsiusToFahrenheit(degreeC) {
+                return degreeC * 9 / 5 + 32;
+            }
+
+            fahrenheitToCelsius(degreeF) {
+                return (degreeF - 32) * 5 / 9;
+            }
+
 
 
 
@@ -213,17 +249,19 @@ module.exports = {
                 this.service
                     .getCharacteristic(Characteristic.CurrentTemperature)
                     .on('get', this.getValue.bind(this, 'temperature'))
-                                    .setProps({
-                                        minValue: -100,
-                                        maxValue: 100,
-                                        minStep: 0.1
-                                    });
+                    .setProps({
+                        minValue: -100,
+                        maxValue: 100,
+                        minStep: 0.1
+                    });
 
                 this.service
                     .getCharacteristic(Characteristic.TargetTemperature)
                     .on('get', this.getTargetTemperature.bind(this))
                     .on('set', this.setTargetTemperature.bind(this));
-                this.service.getCharacteristic(Characteristic.TargetTemperature)
+
+                this.service
+                    .getCharacteristic(Characteristic.TargetTemperature)
                     .setProps({
                         minValue: this.minTemp,
                         maxValue: this.maxTemp,
@@ -239,6 +277,11 @@ module.exports = {
                             Characteristic.TargetHeatingCoolingState.OFF,
                             Characteristic.TargetHeatingCoolingState.COOL
                         ]});
+
+                this.service
+                    .getCharacteristic(Characteristic.TemperatureDisplayUnits)
+                    .on('get', this.getTemperatureDisplayUnits.bind(this))
+                    .on('set', this.setTemperatureDisplayUnits.bind(this));
 
                 this.service
                     .getCharacteristic(Characteristic.Name)
