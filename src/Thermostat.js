@@ -5,6 +5,7 @@ module.exports = {
         const sensorLib = require('node-dht-sensor');
         const gpio = require('rpi-gpio');
         const debug = require('debug');
+        const mcp9808 = require('mcp9808-temperature-sensor');
         const ON = false, OFF = true;
         const OSCILLATION_DEGREES = 2;
         const
@@ -56,6 +57,20 @@ module.exports = {
                 gpio.setup(this.fanPin, gpio.DIR_HIGH);
                 gpio.setup(this.compressorPin, gpio.DIR_HIGH);
 
+                mcp9808.open({
+                    i2cBusNumber: 1, // optional, default 1
+                    i2cAddress: 0x18, // optional, default 0x18
+                    alertGpioNumber: 27,
+                    lowerAlertTemperature: 25,
+                    upperAlertTemperature: 35,
+                    criticalTemperature: 45
+                }).then(sensor => {
+                    setInterval(_ => {
+                        sensor.temperature().then(temp => this.service.setCharacteristic(
+                            Characteristic.CurrentTemperature, temp.celsius));
+                    }, 1000);
+                }).catch(console.log);
+
                 if (this.pollingInterval) {
                     setInterval(() => {
                         this.getValue(null, (err, values) => {
@@ -64,7 +79,6 @@ module.exports = {
                                 this.log(err)
                                 return;
                             }
-                            this.service.setCharacteristic(Characteristic.CurrentTemperature, temperature);
                             this.service.setCharacteristic(Characteristic.CurrentRelativeHumidity, humidity);
                         })
                     }, this.pollingInterval)
